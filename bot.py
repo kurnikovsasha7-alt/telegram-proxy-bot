@@ -153,14 +153,26 @@ def format_report(report: dict) -> str:
         f"Доступны: {report['reachable']}",
         f"Недоступны: {report['unreachable']}",
     ]
+
     if report["avg_ms"] is not None:
         lines.append(f"Средняя задержка TCP-connect: {report['avg_ms']} ms")
 
     if report["fastest"]:
         lines.append("")
-        lines.append("Самые быстрые:")
+        lines.append("Самые быстрые прокси (кликабельные):")
+
         for i, p in enumerate(report["fastest"][:10], 1):
-            lines.append(f"{i}. {p['host']}:{p['port']} — {p['elapsed_ms']} ms")
+            host = p["host"]
+            port = p["port"]
+            secret = p.get("secret")
+
+            if secret:
+                link = f"https://t.me/proxy?server={host}&port={port}&secret={secret}"
+            else:
+                # если вдруг нет секрета — просто текст
+                link = f"{host}:{port}"
+
+            lines.append(f"{i}. {link} — {p['elapsed_ms']} ms")
 
     return "\n".join(lines)
 
