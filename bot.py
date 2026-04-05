@@ -110,7 +110,7 @@ def check_all_proxies() -> dict:
     proxies = fetch_proxy_list()
     results = []
 
-    def worker(item: dict) -> dict:
+def worker(item: dict) -> dict:
     ok, elapsed_ms, error = tcp_connect_latency(
         item["host"],
         item["port"],
