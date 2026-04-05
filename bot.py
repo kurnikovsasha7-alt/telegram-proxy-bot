@@ -111,17 +111,27 @@ def check_all_proxies() -> dict:
     results = []
 
     def worker(item: dict) -> dict:
-        ok, elapsed_ms, error = tcp_connect_latency(
-            item["host"],
-            item["port"],
-            CONNECT_TIMEOUT,
-        )
+    ok, elapsed_ms, error = tcp_connect_latency(
+        item["host"],
+        item["port"],
+        CONNECT_TIMEOUT,
+    )
+
+    # фильтр
+    if not ok or elapsed_ms > 250:
         return {
             **item,
-            "ok": ok,
-            "elapsed_ms": round(elapsed_ms, 1),
-            "error": error,
+            "ok": False,
+            "elapsed_ms": elapsed_ms,
+            "error": "filtered",
         }
+
+    return {
+        **item,
+        "ok": True,
+        "elapsed_ms": round(elapsed_ms, 1),
+        "error": error,
+    }
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         for r in pool.map(worker, proxies):
