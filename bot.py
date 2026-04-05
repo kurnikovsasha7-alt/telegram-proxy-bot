@@ -16,10 +16,10 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 PROXY_LIST_URL = "https://raw.githubusercontent.com/SoliSpirit/mtproto/master/all_proxies.txt"
 
 CONNECT_TIMEOUT = 2.5
-MAX_PROXIES = 50
-MAX_PING = 250
+MAX_PROXIES = 250
+MAX_PING = 500
 
-CHECK_TIME_LIMIT = 30  # максимум секунд на проверку
+CHECK_TIME_LIMIT = 120  # максимум секунд на проверку
 
 DAILY_HOUR = 9
 DAILY_MINUTE = 0
