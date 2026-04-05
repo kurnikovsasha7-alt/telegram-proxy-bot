@@ -56,6 +56,7 @@ def parse_proxy_line(line: str) -> Optional[dict]:
     if line.startswith("tg://proxy?") or line.startswith("https://t.me/proxy?"):
         parsed = urlparse(line)
         qs = parse_qs(parsed.query)
+
         server = qs.get("server", [None])[0]
         port = qs.get("port", [None])[0]
         secret = qs.get("secret", [None])[0]
@@ -121,28 +122,8 @@ def tcp_connect_latency(host: str, port: int, timeout: float):
         return False, elapsed, str(e)
 
 
-def check_http_via_proxy(host: str, port: int, timeout: float) -> bool:
-    try:
-        proxies = {
-            "http": f"http://{host}:{port}",
-            "https": f"http://{host}:{port}",
-        }
-
-        r = requests.get(
-            "http://httpbin.org/ip",
-            proxies=proxies,
-            timeout=timeout,
-        )
-
-        return r.status_code == 200
-
-    except Exception:
-        return False
-
-
 def check_proxy_advanced(host: str, port: int, timeout: float):
-    # 1. TCP (2 попытки)
-    attempts = 2
+    attempts = 3
     latencies = []
 
     for _ in range(attempts):
@@ -155,15 +136,9 @@ def check_proxy_advanced(host: str, port: int, timeout: float):
 
     avg_latency = sum(latencies) / len(latencies)
 
-    # 2. фильтр по скорости
-    if avg_latency > 1500:
+    # фильтр по задержке
+    if avg_latency > 2000:
         return False, avg_latency, "too slow"
-
-    # 3. HTTP проверка
-    http_ok = check_http_via_proxy(host, port, timeout)
-
-    if not http_ok:
-        return False, avg_latency, "http failed"
 
     return True, avg_latency, "ok"
 
@@ -200,7 +175,7 @@ def check_all_proxies():
         avg_ms = round(sum(r["elapsed_ms"] for r in reachable) / len(reachable), 1)
 
     fastest = sorted(
-        [r for r in reachable if r["elapsed_ms"] < 1000],
+        [r for r in reachable if r["elapsed_ms"] < 1500],
         key=lambda x: x["elapsed_ms"]
     )[:10]
 
