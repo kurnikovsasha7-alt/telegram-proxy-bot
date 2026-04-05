@@ -2,7 +2,6 @@ import asyncio
 import os
 import socket
 import time
-from concurrent.futures import ThreadPoolExecutor
 from datetime import time as dtime
 from urllib.parse import parse_qs, urlparse
 
@@ -13,12 +12,14 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 # ================= НАСТРОЙКИ =================
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+
 PROXY_LIST_URL = "https://raw.githubusercontent.com/SoliSpirit/mtproto/master/all_proxies.txt"
 
-CONNECT_TIMEOUT = 3.0
-MAX_WORKERS = 10
-MAX_PROXIES = 100
-MAX_PING = 250  # фильтр
+CONNECT_TIMEOUT = 2.5
+MAX_PROXIES = 50
+MAX_PING = 250
+
+CHECK_TIME_LIMIT = 30  # максимум секунд на проверку
 
 DAILY_HOUR = 9
 DAILY_MINUTE = 0
@@ -34,6 +35,7 @@ def parse_proxy_line(line: str):
     if line.startswith("tg://") or line.startswith("https://"):
         parsed = urlparse(line)
         qs = parse_qs(parsed.query)
+
         server = qs.get("server", [None])[0]
         port = qs.get("port", [None])[0]
         secret = qs.get("secret", [None])[0]
@@ -70,13 +72,15 @@ def fetch_proxies():
 
 def tcp_ping(host, port):
     start = time.perf_counter()
+
     try:
-        sock = socket.socket()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(CONNECT_TIMEOUT)
         sock.connect((host, port))
         sock.close()
 
         return True, (time.perf_counter() - start) * 1000
+
     except:
         return False, 9999
 
@@ -85,21 +89,24 @@ def check_proxies():
     proxies = fetch_proxies()
     results = []
 
-    def worker(p):
+    start_time = time.time()
+
+    for p in proxies:
+        # ⛔ ограничение по времени
+        if time.time() - start_time > CHECK_TIME_LIMIT:
+            break
+
         ok, ms = tcp_ping(p["host"], p["port"])
 
-        if not ok or ms > MAX_PING:
-            return None
+        if ok and ms < MAX_PING:
+            results.append({
+                **p,
+                "ms": round(ms, 1)
+            })
 
-        return {
-            **p,
-            "ms": round(ms, 1)
-        }
-
-    with ThreadPoolExecutor(MAX_WORKERS) as pool:
-        for r in pool.map(worker, proxies):
-            if r:
-                results.append(r)
+        # ⛔ если уже нашли 10 — хватит
+        if len(results) >= 10:
+            break
 
     results.sort(key=lambda x: x["ms"])
     return results[:10]
@@ -122,7 +129,7 @@ def format_result(proxies):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.bot_data["chat_id"] = update.effective_chat.id
-    await update.message.reply_text("Бот готов 🚀")
+    await update.message.reply_text("Бот запущен 🚀")
 
 
 async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -133,10 +140,10 @@ async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         result = await asyncio.wait_for(
             loop.run_in_executor(None, check_proxies),
-            timeout=60
+            timeout=40
         )
     except asyncio.TimeoutError:
-        await update.message.reply_text("Слишком долго ❌")
+        await update.message.reply_text("Проверка заняла слишком много времени ❌")
         return
 
     await update.message.reply_text(format_result(result))
@@ -152,7 +159,7 @@ async def daily(context: ContextTypes.DEFAULT_TYPE):
     try:
         result = await asyncio.wait_for(
             loop.run_in_executor(None, check_proxies),
-            timeout=60
+            timeout=40
         )
     except:
         await context.bot.send_message(chat_id, "Ошибка проверки ❌")
@@ -161,17 +168,7 @@ async def daily(context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id, format_result(result))
 
 
-# 🔥 обновление бота
-import subprocess
-
-async def update_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Обновляю...")
-
-    subprocess.run(["git", "pull"], cwd="/root/telegram-proxy-bot")
-    subprocess.run(["systemctl", "restart", "bot"])
-
-    await update.message.reply_text("Готово ✅")
-
+# ================= MAIN =================
 
 def main():
     if not BOT_TOKEN:
@@ -181,7 +178,6 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("check", check))
-    app.add_handler(CommandHandler("update", update_bot))
 
     app.job_queue.run_daily(
         daily,
